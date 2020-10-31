@@ -9,63 +9,6 @@ from Data import apiKeys as key
 PATH = "./Data/"
 
 
-class DRRLife(QWidget):
-    def __init__(self):
-
-        super().__init__()
-        self.initUI()
-        self.setGeometry(300, 300, 800, 600)
-
-    def initUI(self):
-
-        self.instanceMap = Map()
-        self.map = self.instanceMap.map_dr_songpa
-        self.instanceMap.markStation()
-
-        map_html = io.BytesIO()
-        self.map.save(map_html, close_file=False)
-
-        self.web = QWebEngineView()
-        self.web.setHtml(map_html.getvalue().decode())
-
-        self.address = QLineEdit()
-        self.address.setText("경찰병원역")
-        self.address.returnPressed.connect(self.enterPressed)
-
-        lbl1 = QLabel("주소", self)
-
-        hbox = QHBoxLayout()
-        hbox.addWidget(lbl1)
-        hbox.addWidget(self.address)
-
-        vbox = QVBoxLayout()
-        vbox.addWidget(self.web)
-        vbox.addLayout(hbox)
-        self.setLayout(vbox)
-
-    def enterPressed(self):
-        # 가까운 정거장의 데이터를 구한다.
-        closest = self.instanceMap.find_closest(self.address.text())
-        print(closest.loc["대여소명"])
-        # map에 Marker을 표시한다
-        try:
-            folium.Marker(
-                ((closest.loc["위도"], closest.loc["경도"])),
-                popup=closest.loc["대여소주소"],
-                icon=folium.Icon(color="red"),
-            ).add_to(self.map)
-        except Exception as e:
-            print("error")
-            # pyqt내에서 folium을 새로고침 하는 방법 ( 내일 할 일)
-
-        # 기존에 Marker가 있을 시, 그 마커를 제거한다.
-        # 마커가 표시된 곳으로 Zoom-in한다.
-        pass
-
-    def refreshWeb(self):
-        pass
-
-
 class Map:
     src = glob.glob(os.path.join(PATH + "*.xlsx"))[0]
     data = pd.read_excel(src, sheet_name="대여소현황")
@@ -116,7 +59,10 @@ class Map:
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    w = DRRLife()
-    w.show()
-    sys.exit(app.exec_())
+    instanceMap = Map()
+    _map = instanceMap.map_dr_songpa
+    instanceMap.markStation()
+
+    closest = instanceMap.find_closest("경찰병원역")
+    print(closest)
+    type(closest)
