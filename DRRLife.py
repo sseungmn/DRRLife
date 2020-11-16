@@ -26,6 +26,7 @@ class Widget(QWidget):
         self.map = Map()
         self.space = QSpacerItem(0, 0, QSizePolicy.Expanding)
         self.resetBtn = pushButton("reset")
+        self.engine.load(QUrl.fromLocalFile(PATH + "map.html"))
 
         self.starting.returnPressed.connect(self.starting.onEntered)
         self.destination.returnPressed.connect(self.destination.onEntered)
@@ -35,9 +36,8 @@ class Widget(QWidget):
 
         self.resetBtn.resetPressed.connect(self.starting.resetPressed)
         self.resetBtn.resetPressed.connect(self.destination.resetPressed)
-        self.resetBtn.resetPressed.connect(self.engine.resetPressed)
-
-        self.engine.load(QUrl.fromLocalFile(PATH + "rawMap.html"))
+        self.resetBtn.resetPressed.connect(self.map.resetPressed)
+        # self.map.mapChanged.connect(self.engine.changed)
 
     def initLayout(self):
         txt1 = QHBoxLayout()
@@ -74,16 +74,8 @@ class webEngine(QWebEngineView):
 
     @pyqtSlot()
     def changed(self):
-        print("changed")
+        print("engine changed")
         url = QUrl.fromLocalFile(PATH + "map.html")
-        if url.isValid():
-            self.load(url)
-        else:
-            print("Invalid")
-
-    @pyqtSlot()
-    def resetPressed(self):
-        url = QUrl.fromLocalFile(PATH + "rawMap.html")
         if url.isValid():
             self.load(url)
         else:
@@ -98,7 +90,7 @@ class pushButton(QPushButton):
         self.setText(text)
 
     def mousePressEvent(self, QMouseEvent):
-        os.remove(PATH + "./map.html")
+        print("reset Pressed")
         self.resetPressed.emit()
 
 
@@ -111,13 +103,14 @@ class lineEdit(QLineEdit):
 
     @pyqtSlot()
     def onEntered(self):
-        print("onEntered")
+        print("lineEdit onEntered")
         _txt = self.text()
 
         self.sendText.emit(self.id, _txt)
 
     @pyqtSlot()
     def resetPressed(self):
+        print("lineEdit resetPressed")
         self.setText("")
 
 
@@ -138,6 +131,7 @@ class Map(QObject):
         super().__init__()
         self.map_dr_songpa = folium.Map(location=self._loc, zoom_start=14)
         self.feature_group = folium.FeatureGroup(name="Markers")
+        print(self.feature_group)
         self.mark_buffer = {"starting": False, "destination": False}
 
         for i in range(self._src_data_size):
@@ -148,7 +142,7 @@ class Map(QObject):
             ).add_to(self.feature_group)
         self.feature_group.add_to(self.map_dr_songpa)
 
-        self.map_dr_songpa.save(PATH + "rawMap.html", close_file=False)
+        self.map_dr_songpa.save(PATH + "map.html", close_file=False)
 
     def find_location(self, address):
         URL = f"https://dapi.kakao.com/v2/local/search/keyword.json?query={address}"
@@ -196,8 +190,17 @@ class Map(QObject):
 
     @pyqtSlot(str, str)
     def onGaved(self, obj, text):
-        print("textGaved")
+        print("map onGaved")
         self.mark_closest_staion(obj, text)
+        self.map_dr_songpa.save(PATH + "map.html", close_file=False)
+        self.mapChanged.emit()
+
+    @pyqtSlot()
+    def resetPressed(self):
+        print("map resetPressed")
+        self.feature_group = folium.FeatureGroup(name="Markers")
+        print(self.feature_group)
+        self.feature_group.add_to(self.map_dr_songpa)
         self.map_dr_songpa.save(PATH + "map.html", close_file=False)
         self.mapChanged.emit()
 
