@@ -24,14 +24,19 @@ class Widget(QWidget):
         self.destination = lineEdit("destination")
         self.engine = webEngine()
         self.map = Map()
+        self.route = Route()
         self.space = QSpacerItem(0, 0, QSizePolicy.Expanding)
         self.resetBtn = pushButton("reset")
         self.engine.load(QUrl.fromLocalFile(PATH + "map.html"))
+        self.trabletimeLbl = label("예상시간 : ")
 
         self.starting.returnPressed.connect(self.starting.onEntered)
         self.destination.returnPressed.connect(self.destination.onEntered)
         self.starting.sendText.connect(self.map.onGaved)
+        self.starting.sendText.connect(self.route.onEntered)
         self.destination.sendText.connect(self.map.onGaved)
+        self.destination.sendText.connect(self.route.onEntered)
+        self.route.timeCalculated.connect(self.trabletimeLbl.onEntered)
         self.map.mapChanged.connect(self.engine.changed)
 
         self.resetBtn.resetPressed.connect(self.starting.resetPressed)
@@ -58,6 +63,7 @@ class Widget(QWidget):
 
         vbox = QVBoxLayout()
         vbox.addLayout(searchbox)
+        vbox.addWidget(self.trabletimeLbl)
         vbox.addSpacerItem(self.space)
         vbox.addSpacing(500)
 
@@ -80,6 +86,17 @@ class webEngine(QWebEngineView):
             self.load(url)
         else:
             print("Invalid")
+
+
+class label(QLabel):
+    def __init__(self, text):
+        super().__init__()
+        self.setText(text)
+
+    @pyqtSlot(str)
+    def onEntered(self, message):
+        print("label on Entered")
+        self.setText(message)
 
 
 class pushButton(QPushButton):
@@ -105,7 +122,6 @@ class lineEdit(QLineEdit):
     def onEntered(self):
         print("lineEdit onEntered")
         _txt = self.text()
-
         self.sendText.emit(self.id, _txt)
 
     @pyqtSlot()
@@ -181,14 +197,6 @@ class Map(QObject):
 
     #                            (ID , Address)
     def mark_closest_staion(self, obj, text):
-        # if self.mark_buffer[obj] is not False:
-            # prev = self.mark_buffer[obj]
-            # folium.Marker(
-                # list(prev.loc[["위도", "경도"]]),
-                # popup=prev.loc[["대여소주소"]],
-                # icon=folium.Icon(color="green"),
-            # ).add_to(self.marker_group)
-
         current = self.find_closest(text)
         self.mark_buffer[obj] = current
         folium.Marker(
@@ -201,7 +209,7 @@ class Map(QObject):
 
     @pyqtSlot(str, str)
     def onGaved(self, obj, text):
-        print("map onGaved")
+        print("map onGaved : " + obj + "," + text)
         self.mark_closest_staion(obj, text)
         self.marked_map_dr_songpa.save(PATH + "map.html", close_file=False)
         self.mapChanged.emit()
@@ -210,15 +218,18 @@ class Map(QObject):
     def resetPressed(self):
         print("map resetPressed")
         self.marker_group = folium.FeatureGroup(name="Markers")
-        print(self.marker_group)  # debuging
         self.map_dr_songpa.save(PATH + "map.html", close_file=False)
         self.marked_map_dr_songpa = self.raw_map_dr_songpa
         self.mapChanged.emit()
 
 
 class Route(QObject):
+    timeCalculated = pyqtSignal(str)
+
     def __init__(self):
         super().__init__()
+        self.starting = ""
+        self.destination = ""
         self.headers = {
             "Host": "search.map.daum.net",
             "Referer": "https://map.kakao.com/",
@@ -248,10 +259,23 @@ class Route(QObject):
         if _raw.status_code == 200:
             _json = _raw.json().get("directions")
             _time = _json[0].get("time") // 60
-            return _time
+            _message = "[" + method + "]" + s + "->" + e + ":" + _time + "분"
+            return _message
         else:
             print("ERROR : ", _raw.status_code)
             return -1
+
+    @pyqtSlot(str, str)
+    def onEntered(self, Id, address):
+        print("route onEnterd" + Id)
+        if Id == "starting":
+            self.starting = address
+        elif Id == "destination":
+            self.destination = address
+            message = self.find_route(self.starting, self.destination, "bikeset")
+            if message == -1:
+                message = "ERROR"
+            self.timeCalculated.emit(message)
 
 
 if __name__ == "__main__":
