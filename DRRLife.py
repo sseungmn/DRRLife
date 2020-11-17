@@ -129,9 +129,20 @@ class Map(QObject):
 
     def __init__(self):
         super().__init__()
-        self.map_dr_songpa = folium.Map(location=self._loc, zoom_start=14)
-        self.feature_group = folium.FeatureGroup(name="Markers")
-        print(self.feature_group)
+        self.raw_map_dr_songpa = folium.Map(
+            location=self._loc, zoom_start=14
+        )  # 아무것도 없는 맵
+        self.map_dr_songpa = folium.Map(
+            location=self._loc, zoom_start=14
+        )  # 모든 정류장이 나와있는 맵
+        self.marked_map_dr_songpa = folium.Map(
+            location=self._loc, zoom_start=14
+        )  # 검색한 정류장만 나와있는 맵
+        self.map_dr_songpa.save(PATH + "rawMap.html", close_file=False)
+
+        self.station_group = folium.FeatureGroup(name="Stations")  # 모든 정류장 마커
+        self.marker_group = folium.FeatureGroup(name="Stations")  # 검색한 정류장 마커
+        # print(self.feature_group) #debuging
         self.mark_buffer = {"starting": False, "destination": False}
 
         for i in range(self._src_data_size):
@@ -139,8 +150,8 @@ class Map(QObject):
                 list(self._src_songpa.iloc[i][["위도", "경도"]]),
                 popup=self._src_songpa.iloc[i][["대여소주소"]],
                 icon=folium.Icon(color="green"),
-            ).add_to(self.feature_group)
-        self.feature_group.add_to(self.map_dr_songpa)
+            ).add_to(self.station_group)
+        self.station_group.add_to(self.map_dr_songpa)
 
         self.map_dr_songpa.save(PATH + "map.html", close_file=False)
 
@@ -170,13 +181,13 @@ class Map(QObject):
 
     #                            (ID , Address)
     def mark_closest_staion(self, obj, text):
-        if self.mark_buffer[obj] is not False:
-            prev = self.mark_buffer[obj]
-            folium.Marker(
-                list(prev.loc[["위도", "경도"]]),
-                popup=prev.loc[["대여소주소"]],
-                icon=folium.Icon(color="green"),
-            ).add_to(self.feature_group)
+        # if self.mark_buffer[obj] is not False:
+            # prev = self.mark_buffer[obj]
+            # folium.Marker(
+                # list(prev.loc[["위도", "경도"]]),
+                # popup=prev.loc[["대여소주소"]],
+                # icon=folium.Icon(color="green"),
+            # ).add_to(self.marker_group)
 
         current = self.find_closest(text)
         self.mark_buffer[obj] = current
@@ -184,24 +195,24 @@ class Map(QObject):
             list(current.loc[["위도", "경도"]]),
             popup=current.loc[["대여소주소"]],
             icon=folium.Icon(color="blue"),
-        ).add_to(self.feature_group)
+        ).add_to(self.marker_group)
 
-        self.feature_group.add_to(self.map_dr_songpa)
+        self.marker_group.add_to(self.marked_map_dr_songpa)
 
     @pyqtSlot(str, str)
     def onGaved(self, obj, text):
         print("map onGaved")
         self.mark_closest_staion(obj, text)
-        self.map_dr_songpa.save(PATH + "map.html", close_file=False)
+        self.marked_map_dr_songpa.save(PATH + "map.html", close_file=False)
         self.mapChanged.emit()
 
     @pyqtSlot()
     def resetPressed(self):
         print("map resetPressed")
-        self.feature_group = folium.FeatureGroup(name="Markers")
-        print(self.feature_group)
-        self.feature_group.add_to(self.map_dr_songpa)
+        self.marker_group = folium.FeatureGroup(name="Markers")
+        print(self.marker_group)  # debuging
         self.map_dr_songpa.save(PATH + "map.html", close_file=False)
+        self.marked_map_dr_songpa = self.raw_map_dr_songpa
         self.mapChanged.emit()
 
 
