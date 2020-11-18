@@ -42,6 +42,7 @@ class Widget(QWidget):
         self.resetBtn.resetPressed.connect(self.starting.resetPressed)
         self.resetBtn.resetPressed.connect(self.destination.resetPressed)
         self.resetBtn.resetPressed.connect(self.map.resetPressed)
+        self.resetBtn.resetPressed.connect(self.trabletimeLbl.resetPressed)
         # self.map.mapChanged.connect(self.engine.changed)
 
     def initLayout(self):
@@ -95,8 +96,13 @@ class label(QLabel):
 
     @pyqtSlot(str)
     def onEntered(self, message):
-        print("label on Entered")
+        print("label onEntered")
         self.setText(message)
+
+    @pyqtSlot()
+    def resetPressed(self):
+        print("label resetPressed")
+        self.setText("")
 
 
 class pushButton(QPushButton):
