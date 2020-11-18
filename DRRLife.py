@@ -230,16 +230,11 @@ class Route(QObject):
         super().__init__()
         self.starting = ""
         self.destination = ""
-        self.headers = {
-            "Host": "search.map.daum.net",
-            "Referer": "https://map.kakao.com/",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)\
-                    AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.183 Safari/537.36",
-        }
 
     def find_location(self, address):
         _url = f"https://search.map.daum.net/mapsearch/map.daum?&q={address}&msFlag=A&sort=0&gb=R"
-        _raw = requests.get(_url, headers=self.headers)
+        _headers = {"Host": "search.map.daum.net", "Referer": "https://map.kakao.com/"}
+        _raw = requests.get(_url, headers=_headers)
         _json = _raw.json().get("place")[0]
         _location = (_json.get("x"), _json.get("y"), _json.get("sourceId"))
         return _location
@@ -248,18 +243,23 @@ class Route(QObject):
         _sX, _sY, _sID = self.find_location(s)
         _eX, _eY, _eID = self.find_location(e)
 
+        _headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)\
+                    AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.183 Safari/537.36"
+        }
+
         if method == "bikeset":
             _url = f"https://map.kakao.com/route/bikeset.json?sX={_sX}&sY={_sY}&eX={_eX}&eY={_eY}"
         elif method == "walkset":
             _url = f"https://map.kakao.com/route/walkset.json?\
                     sX={_sX}&sY={_sY}&eX={_eX}&eY={_eY}&ids={_sID},{_eID}"
 
-        _raw = requests.get(_url, headers=self.headers)
+        _raw = requests.get(_url, headers=_headers)
 
         if _raw.status_code == 200:
             _json = _raw.json().get("directions")
             _time = _json[0].get("time") // 60
-            _message = "[" + method + "]" + s + "->" + e + ":" + _time + "분"
+            _message = "[" + method + "] " + s + "->" + e + ":" + str(_time) + "분"
             return _message
         else:
             print("ERROR : ", _raw.status_code)
@@ -270,8 +270,10 @@ class Route(QObject):
         print("route onEnterd" + Id)
         if Id == "starting":
             self.starting = address
+            print("starting : " + address)
         elif Id == "destination":
             self.destination = address
+            print("destination : " + address)
             message = self.find_route(self.starting, self.destination, "bikeset")
             if message == -1:
                 message = "ERROR"
