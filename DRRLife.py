@@ -128,6 +128,23 @@ class lineEdit(QLineEdit):
     def onEntered(self):
         print("lineEdit onEntered")
         _txt = self.text()
+
+        if self.id == "starting":
+            with open("./Data/test.txt", mode="r+", encoding="utf-8") as f:
+                lines = f.readlines()
+                count = len(lines)
+
+                if count >= 5:
+                    f.seek(0)
+                    for i in range(count - 4, count):
+                        f.write(lines[i])
+                    f.truncate()
+
+        with open("./Data/test.txt", mode="at", encoding="utf-8") as f:
+            if self.id == "destination":
+                f.write(" " + _txt + "\n")
+            else:
+                f.write(_txt)
         self.sendText.emit(self.id, _txt)
 
     @pyqtSlot()
