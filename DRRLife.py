@@ -1,5 +1,5 @@
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal, QUrl
+from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 import folium
 import sys, glob, os, json, requests, io, time
@@ -8,6 +8,7 @@ import pandas as pd
 from Data import apiKeys as key
 
 PATH = "/Users/sseungmn/Documents/workspace/ws1/Data/"
+NUMLIST = 10
 
 
 class Widget(QWidget):
@@ -29,6 +30,7 @@ class Widget(QWidget):
         self.resetBtn = pushButton("reset")
         self.engine.load(QUrl.fromLocalFile(PATH + "map.html"))
         self.trabletimeLbl = label("예상시간 : ")
+        self.mruView = listWidget()
 
         self.starting.returnPressed.connect(self.starting.onEntered)
         self.destination.returnPressed.connect(self.destination.onEntered)
@@ -44,6 +46,9 @@ class Widget(QWidget):
         self.resetBtn.resetPressed.connect(self.map.resetPressed)
         self.resetBtn.resetPressed.connect(self.trabletimeLbl.resetPressed)
         # self.map.mapChanged.connect(self.engine.changed)
+
+        self.mruView.itemDoubleClicked.connect(self.starting.itemDoubleClicked)
+        self.mruView.itemDoubleClicked.connect(self.destination.itemDoubleClicked)
 
     def initLayout(self):
         txt1 = QHBoxLayout()
@@ -65,14 +70,30 @@ class Widget(QWidget):
         vbox = QVBoxLayout()
         vbox.addLayout(searchbox)
         vbox.addWidget(self.trabletimeLbl)
+        vbox.addWidget(self.mruView)
         vbox.addSpacerItem(self.space)
-        vbox.addSpacing(500)
+        # vbox.addSpacing(300)
 
         hbox = QHBoxLayout()
         hbox.addWidget(self.engine)
         hbox.addLayout(vbox)
 
         self.setLayout(hbox)
+
+
+class listWidget(QListWidget):
+    def __init__(self):
+        super().__init__()
+        self.showMaximized()
+        self.refresh()
+
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+
+    def refresh(self):
+        with open("./Data/test.txt", "rt") as f:
+            for line in f.readlines():
+                print(line.rstrip("\n"))
+                self.addItem(line.rstrip("\n"))
 
 
 class webEngine(QWebEngineView):
@@ -134,9 +155,9 @@ class lineEdit(QLineEdit):
                 lines = f.readlines()
                 count = len(lines)
 
-                if count >= 5:
+                if count >= NUMLIST:
                     f.seek(0)
-                    for i in range(count - 4, count):
+                    for i in range(count - (NUMLIST - 1), count):
                         f.write(lines[i])
                     f.truncate()
 
@@ -152,6 +173,16 @@ class lineEdit(QLineEdit):
         print("lineEdit resetPressed")
         self.setText("")
 
+    @pyqtSlot(QListWidgetItem)
+    def itemDoubleClicked(self, item):
+        _txt = ""
+        if self.id == "starting":
+            _txt = item.text().split()[0]
+        elif self.id == "destination":
+            _txt = item.text().split()[1]
+
+        self.setText(_txt)
+        self.sendText.emit(self.id, _txt)
 
 class Map(QObject):
     mapChanged = pyqtSignal()
