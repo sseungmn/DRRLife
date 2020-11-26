@@ -397,9 +397,14 @@ class Route(QObject):
     def onEntered(self, route):
         print("route onEntered")
         print(route)
-        message = self.find_route(route["starting"], route["destination"], "bikeset")
-        if message == -1:
-            message = "ERROR"
+        if route["starting"] == route["destination"]:
+            message = "ERROR : 출발지와 목적지가 서로 같습니다."
+        else:
+            message = self.find_route(
+                route["starting"], route["destination"], "bikeset"
+            )
+            if message == -1:
+                message = "ERROR"
         self.timeCalculated.emit(message)
 
 
