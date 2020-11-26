@@ -1,6 +1,20 @@
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
+from PyQt5.QtCore import QObject, pyqtSlot, pyqtSignal, QUrl
+from PyQt5.QtWidgets import (
+    QVBoxLayout,
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QWidget,
+    QApplication,
+    QLineEdit,
+    QMessageBox,
+    QLabel,
+    QPushButton,
+    QSpacerItem,
+    QSizePolicy,
+    QAbstractItemView,
+)
 import folium
 import sys, glob, os, json, requests, io, time
 import numpy as np
@@ -34,12 +48,18 @@ class Widget(QWidget):
 
         self.starting.returnPressed.connect(self.starting.onEntered)
         self.destination.returnPressed.connect(self.destination.onEntered)
-        self.starting.sendText.connect(self.map.onGaved)
-        self.starting.sendText.connect(self.route.onEntered)
         self.destination.sendText.connect(self.map.onGaved)
         self.destination.sendText.connect(self.route.onEntered)
         self.route.timeCalculated.connect(self.trabletimeLbl.onEntered)
         self.map.mapChanged.connect(self.engine.changed)
+
+        self.starting.doVerify.connect(self.map.verifySlot)
+        self.destination.doVerify.connect(self.map.verifySlot)
+
+        self.map.valid.connect(self.starting.valid)
+        self.map.invalid.connect(self.starting.valid)
+        self.map.valid.connect(self.destination.valid)
+        self.map.invalid.connect(self.destination.valid)
 
         self.resetBtn.resetPressed.connect(self.starting.resetPressed)
         self.resetBtn.resetPressed.connect(self.destination.resetPressed)
@@ -49,6 +69,8 @@ class Widget(QWidget):
 
         self.mruView.itemDoubleClicked.connect(self.starting.itemDoubleClicked)
         self.mruView.itemDoubleClicked.connect(self.destination.itemDoubleClicked)
+
+        self.destination.doRefresh.connect(self.mruView.refreshSlot)
 
     def initLayout(self):
         txt1 = QHBoxLayout()
@@ -90,10 +112,14 @@ class listWidget(QListWidget):
         self.setSelectionMode(QAbstractItemView.SingleSelection)
 
     def refresh(self):
+        self.clear()
         with open("./Data/test.txt", "rt") as f:
             for line in f.readlines():
-                print(line.rstrip("\n"))
                 self.addItem(line.rstrip("\n"))
+
+    @pyqtSlot()
+    def refreshSlot(self):
+        self.refresh()
 
 
 class webEngine(QWebEngineView):
@@ -139,34 +165,65 @@ class pushButton(QPushButton):
 
 
 class lineEdit(QLineEdit):
-    sendText = pyqtSignal(str, str)
+    sendText = pyqtSignal(dict)
+    doVerify = pyqtSignal(str)
+    doRefresh = pyqtSignal()
+    route = {"starting": "", "destination": ""}
 
     def __init__(self, ID):
         super().__init__()
         self.id = ID
+        self.isValid = 0
 
     @pyqtSlot()
     def onEntered(self):
         print("lineEdit onEntered")
-        _txt = self.text()
+        _text = self.text()
+        if self.verifyAddress(_text) is True:
+            QMessageBox.warning(w, "Confirmed", "확인된 주소입니다.")
+            if self.id == "starting":
+                print("starting : " + _text)
+                self.route["starting"] = _text
+            elif self.id == "destination":
+                print("destination : " + _text)
+                self.route["destination"] = _text
+                self.save()
+                self.sendText.emit(self.route)
+        else:
+            self.setText("")
+            QMessageBox.warning(w, "Warning", "잘못된 주소입니다. 다시 입력해주세요.")
 
-        if self.id == "starting":
-            with open("./Data/test.txt", mode="r+", encoding="utf-8") as f:
-                lines = f.readlines()
-                count = len(lines)
+    def save(self):
+        text = self.route["starting"] + " " + self.route["destination"] + "\n"
+        print("save : ", text)
+        with open("./Data/test.txt", mode="r+", encoding="utf-8") as f:
+            lines = f.readlines()
+            count = len(lines)
 
-                if count >= NUMLIST:
-                    f.seek(0)
-                    for i in range(count - (NUMLIST - 1), count):
-                        f.write(lines[i])
-                    f.truncate()
+            if count >= NUMLIST:
+                f.seek(0)
+                for i in range(count - (NUMLIST - 1), count):
+                    f.write(lines[i])
+                f.truncate()
 
         with open("./Data/test.txt", mode="at", encoding="utf-8") as f:
-            if self.id == "destination":
-                f.write(" " + _txt + "\n")
-            else:
-                f.write(_txt)
-        self.sendText.emit(self.id, _txt)
+            f.write(text)
+        self.doRefresh.emit()
+
+    def verifyAddress(self, address):
+        self.doVerify.emit(address)
+        if self.isValid == 1:
+            return True
+        elif self.isValid == 2:
+            return False
+
+    @pyqtSlot()
+    def valid(self):
+        self.isValid = 1
+
+    @pyqtSlot()
+    def invalid(self):
+        self.isValid = 2
 
     @pyqtSlot()
     def resetPressed(self):
@@ -178,14 +235,19 @@ class lineEdit(QLineEdit):
         _txt = ""
         if self.id == "starting":
             _txt = item.text().split()[0]
+            self.setText(_txt)
+            self.route[self.id] = _txt
         elif self.id == "destination":
             _txt = item.text().split()[1]
+            self.setText(_txt)
+            self.route[self.id] = _txt
+            self.sendText.emit(self.route)
 
-        self.setText(_txt)
-        self.sendText.emit(self.id, _txt)
 
 class Map(QObject):
     mapChanged = pyqtSignal()
+    valid = pyqtSignal()
+    invalid = pyqtSignal()
 
     _src = glob.glob(os.path.join(PATH + "*.xlsx"))[0]
     _data = pd.read_excel(_src, sheet_name="대여소현황")
@@ -199,20 +261,8 @@ class Map(QObject):
 
     def __init__(self):
         super().__init__()
-        self.raw_map_dr_songpa = folium.Map(
-            location=self._loc, zoom_start=14
-        )  # 아무것도 없는 맵
-        self.map_dr_songpa = folium.Map(
-            location=self._loc, zoom_start=14
-        )  # 모든 정류장이 나와있는 맵
-        self.marked_map_dr_songpa = folium.Map(
-            location=self._loc, zoom_start=14
-        )  # 검색한 정류장만 나와있는 맵
-        self.map_dr_songpa.save(PATH + "rawMap.html", close_file=False)
-
+        self.raw_map = folium.Map(location=self._loc, zoom_start=14)
         self.station_group = folium.FeatureGroup(name="Stations")  # 모든 정류장 마커
-        self.marker_group = folium.FeatureGroup(name="Stations")  # 검색한 정류장 마커
-        # print(self.feature_group) #debuging
         self.mark_buffer = {"starting": False, "destination": False}
 
         for i in range(self._src_data_size):
@@ -221,17 +271,36 @@ class Map(QObject):
                 popup=self._src_songpa.iloc[i][["대여소주소"]],
                 icon=folium.Icon(color="green"),
             ).add_to(self.station_group)
-        self.station_group.add_to(self.map_dr_songpa)
+        self.station_group.add_to(self.raw_map)
 
-        self.map_dr_songpa.save(PATH + "map.html", close_file=False)
+        self.raw_map.save(PATH + "map.html", close_file=False)
 
     def find_location(self, address):
+        # 앞에서 모든 route가 verify되었기 때문에 True인지 확인할 필요가 없다.
+        _, jObject = self.verify(address)
+        des = [jObject.get("x"), jObject.get("y")]
+        return des
+
+    def verify(self, address):
         URL = f"https://dapi.kakao.com/v2/local/search/keyword.json?query={address}"
         HEADERS = {"Authorization": f"KakaoAK {key.KAKAO_RESTAPI_KEY}"}
         places = requests.get(URL, headers=HEADERS).text
-        jObject = json.loads(places).get("documents")[0]
-        des = [jObject.get("x"), jObject.get("y")]
-        return des
+        try:
+            jObject = json.loads(places).get("documents")[0]
+        except:
+            print("verify : false")
+            return False, ""
+        else:
+            print("verify : true")
+            return True, jObject
+
+    @pyqtSlot(str)
+    def verifySlot(self, address):
+        v, _ = self.verify(address)
+        if v is True:
+            self.valid.emit()
+        else:
+            self.invalid.emit()
 
     # return pandas object of the closest station
     def find_closest(self, address):
@@ -249,31 +318,36 @@ class Map(QObject):
                 min_ = temp
         return self._src_songpa.iloc[val]
 
-    #                            (ID , Address)
-    def mark_closest_staion(self, obj, text):
-        current = self.find_closest(text)
-        self.mark_buffer[obj] = current
-        folium.Marker(
-            list(current.loc[["위도", "경도"]]),
-            popup=current.loc[["대여소주소"]],
-            icon=folium.Icon(color="blue"),
-        ).add_to(self.marker_group)
+    def mark_closest_staion(self, route):
+        _group = folium.FeatureGroup("Markers")
+        _loc = [0, 0]
+        for key in route:
+            current = self.find_closest(route[key])
+            self.mark_buffer[key] = current
+            folium.Marker(
+                list(current.loc[["위도", "경도"]]),
+                popup=current.loc[["대여소주소"]],
+                icon=folium.Icon(color="blue"),
+            ).add_to(_group)
 
-        self.marker_group.add_to(self.marked_map_dr_songpa)
+            _loc[0] += current.loc[["위도"]] / 2
+            _loc[1] += current.loc[["경도"]] / 2
 
-    @pyqtSlot(str, str)
-    def onGaved(self, obj, text):
-        print("map onGaved : " + obj + "," + text)
-        self.mark_closest_staion(obj, text)
-        self.marked_map_dr_songpa.save(PATH + "map.html", close_file=False)
+        _map = folium.Map(location=_loc, zoom_start=14)
+        _group.add_to(_map)
+        _map.save(PATH + "map.html", close_file=False)
+
+    @pyqtSlot(dict)
+    def onGaved(self, route):
+        print("map onGaved : ")
+        print(route)
+        self.mark_closest_staion(route)
         self.mapChanged.emit()
 
     @pyqtSlot()
     def resetPressed(self):
         print("map resetPressed")
-        self.marker_group = folium.FeatureGroup(name="Markers")
-        self.map_dr_songpa.save(PATH + "map.html", close_file=False)
-        self.marked_map_dr_songpa = self.raw_map_dr_songpa
+        self.raw_map.save(PATH + "map.html", close_file=False)
         self.mapChanged.emit()
 
 
@@ -319,19 +393,14 @@ class Route(QObject):
             print("ERROR : ", _raw.status_code)
             return -1
 
-    @pyqtSlot(str, str)
-    def onEntered(self, Id, address):
-        print("route onEnterd" + Id)
-        if Id == "starting":
-            self.starting = address
-            print("starting : " + address)
-        elif Id == "destination":
-            self.destination = address
-            print("destination : " + address)
-            message = self.find_route(self.starting, self.destination, "bikeset")
-            if message == -1:
-                message = "ERROR"
-            self.timeCalculated.emit(message)
+    @pyqtSlot(dict)
+    def onEntered(self, route):
+        print("route onEntered")
+        print(route)
+        message = self.find_route(route["starting"], route["destination"], "bikeset")
+        if message == -1:
+            message = "ERROR"
+        self.timeCalculated.emit(message)
 
 
 if __name__ == "__main__":
